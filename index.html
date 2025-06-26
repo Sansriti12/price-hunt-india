@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PriceHunt India</title>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://unpkg.com/@zxing/browser@latest"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: url('https://www.transparenttextures.com/patterns/wood-pattern.png');
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background: linear-gradient(to right, #ffee58, #29b6f6);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+    }
+    header img {
+      height: 32px;
+      margin-right: 10px;
+    }
+    header h1 {
+      font-size: 20px;
+      color: #004d40;
+    }
+    section {
+      background: #ffffffcc;
+      margin: 20px;
+      padding: 20px;
+      border-radius: 15px;
+    }
+    input, button, select {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+    }
+    button {
+      background: linear-gradient(to right, #ffee58, #29b6f6);
+      font-weight: bold;
+      color: #000;
+      border: none;
+      cursor: pointer;
+    }
+    #price-results {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+    }
+    .price-card {
+      width: 180px;
+      background: #fff;
+      border-radius: 12px;
+      padding: 15px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .price-card img {
+      height: 50px;
+      object-fit: contain;
+      margin-bottom: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #fdd835;
+    }
+    video {
+      width: 100%;
+      border-radius: 10px;
+      margin-top: 10px;
+    }
+    .drop-alert {
+      color: green;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <img src="https://cdn-icons-png.flaticon.com/512/1040/1040230.png" alt="logo">
+  <h1>PriceHunt India – Find the Best Deals</h1>
+</header>
+
+<section>
+  <h2>📍 Detect Your Location</h2>
+  <input type="text" id="location" placeholder="Enter your area (e.g. Dadar)">
+  <button onclick="detectLocation()">Auto Detect Location</button>
+</section>
+
+<section>
+  <h2>🔍 AI Product Identifier</h2>
+  <input type="file" id="productImage">
+  <button onclick="identifyProduct()">Identify Product</button>
+  <p id="product-name-display"></p>
+</section>
+
+<section>
+  <h2>📷 Barcode Scanner</h2>
+  <button onclick="startBarcodeScanner()">Scan Barcode</button>
+  <video id="barcode-video" autoplay></video>
+  <p id="barcode-result"></p>
+</section>
+
+<section id="price-compare">
+  <h2 style="color: #0077c2;">📊 Price Comparison</h2>
+  <div id="price-results"></div>
+  <button onclick="fetchDynamicPrices()">Compare Prices</button>
+</section>
+
+<section id="history">
+  <h2>🔎 Search History Viewer</h2>
+  <button onclick="fetchHistory()">Load Search History</button>
+  <div id="historyTable"></div>
+</section>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyA-ZDGuvfGXZyQ-urgkvsH5z20VI3Wog3o",
+  authDomain: "pricehunt-india.firebaseapp.com",
+  projectId: "pricehunt-india",
+  storageBucket: "pricehunt-india.appspot.com",
+  messagingSenderId: "192907609491",
+  appId: "1:192907609491:web:cdfa4287f65e142db85466"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+function detectLocation() {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(pos => {
+      document.getElementById('location').value = `Lat: ${pos.coords.latitude}, Long: ${pos.coords.longitude}`;
+    }, err => {
+      alert("Location access denied. Please enter manually.");
+    });
+  } else {
+    alert("Geolocation not supported");
+  }
+}
+
+let currentProduct = "";
+
+function identifyProduct() {
+  const imageInput = document.getElementById('productImage');
+  const file = imageInput.files[0];
+  if (!file) return alert("Please upload an image");
+
+  const formData = new FormData();
+  formData.append("image", file);
+
+  fetch("http://127.0.0.1:5000/predict", {
+    method: "POST",
+    body: formData
+  })
+  .then(res => res.json())
+  .then(data => {
+    alert("✅ AI Identified: " + data.label);
+    currentProduct = data.label;
+    document.getElementById("product-name-display").innerText = `Product: ${data.label}`;
+  })
+  .catch(err => {
+    alert("Error communicating with AI server");
+    console.error(err);
+  });
+}
+
+function startBarcodeScanner() {
+  const codeReader = new ZXing.BrowserBarcodeReader();
+  codeReader.decodeFromVideoDevice(null, "barcode-video", (result, err) => {
+    if (result) {
+      document.getElementById("barcode-result").innerText = `Scanned: ${result.text}`;
+      currentProduct = result.text;
+      codeReader.reset();
+    }
+  });
+}
+
+function fetchDynamicPrices() {
+  const productName = currentProduct || "Sample Product";
+  const location = document.getElementById("location").value || "Mumbai";
+
+  const flipPrice = Math.floor(Math.random() * 3000 + 11000);
+  const amazPrice = Math.floor(Math.random() * 3000 + 11000);
+  const meeshoPrice = Math.floor(Math.random() * 3000 + 11000);
+  const localPrice = Math.floor(Math.random() * 3000 + 11000);
+
+  const prices = [
+    { site: "Flipkart", logo: "https://1000logos.net/wp-content/uploads/2021/02/Flipkart-logo.png", price: `₹${flipPrice}`, link: "https://www.flipkart.com" },
+    { site: "Amazon", logo: "https://1000logos.net/wp-content/uploads/2016/10/Amazon-logo-meaning.jpg", price: `₹${amazPrice}`, link: "https://www.amazon.in" },
+    { site: "Meesho", logo: "https://images.news18.com/ibnlive/uploads/2022/06/meesho.jpg", price: `₹${meeshoPrice}`, link: "https://www.meesho.com" },
+    { site: `Local (${location})`, logo: "https://cdn-icons-png.flaticon.com/512/69/69524.png", price: `₹${localPrice}`, link: "#" }
+  ];
+
+  const container = document.getElementById("price-results");
+  container.innerHTML = "";
+
+  prices.forEach(item => {
+    const card = document.createElement("div");
+    card.className = "price-card";
+    card.innerHTML = `
+      <img src="${item.logo}" alt="${item.site}" />
+      <h4>${item.site}</h4>
+      <p style="font-size: 18px; font-weight: bold;">${item.price}</p>
+      <a href="${item.link}" target="_blank">
+        <button>Check</button>
+      </a>
+    `;
+    container.appendChild(card);
+  });
+
+  db.collection("searches").add({
+    productName: productName,
+    location: location,
+    timestamp: new Date().toISOString(),
+    prices: {
+      flipkart: flipPrice,
+      amazon: amazPrice,
+      meesho: meeshoPrice,
+      local: localPrice
+    }
+  });
+}
+
+function fetchHistory() {
+  const historyTable = document.getElementById("historyTable");
+  historyTable.innerHTML = "<p>Loading...</p>";
+
+  db.collection("searches").orderBy("timestamp", "desc").get().then(snapshot => {
+    let html = `<table><tr><th>Product</th><th>Location</th><th>Time</th><th>Flipkart</th><th>Amazon</th><th>Meesho</th><th>Local</th><th>Alert</th></tr>`;
+    let previousPrices = {};
+
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      const name = data.productName;
+      const current = data.prices;
+
+      let alertText = "";
+      if (previousPrices[name]) {
+        const prev = previousPrices[name];
+        if (current.flipkart < prev.flipkart || current.amazon < prev.amazon || current.meesho < prev.meesho || current.local < prev.local) {
+          alertText = `<span class='drop-alert'>⬇ Price Drop!</span>`;
+        }
+      }
+      previousPrices[name] = current;
+
+      html += `<tr>
+        <td>${name}</td>
+        <td>${data.location}</td>
+        <td>${new Date(data.timestamp).toLocaleString()}</td>
+        <td>₹${current.flipkart}</td>
+        <td>₹${current.amazon}</td>
+        <td>₹${current.meesho}</td>
+        <td>₹${current.local}</td>
+        <td>${alertText}</td>
+      </tr>`;
+    });
+
+    html += `</table>`;
+    historyTable.innerHTML = html;
+  });
+}
+</script>
+
+</body>
+</html>
